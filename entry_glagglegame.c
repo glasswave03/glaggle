@@ -1,3 +1,19 @@
+
+typedef struct Sprite {
+	Gfx_Image* image;
+	Vector2 size;
+} Sprite;
+
+typedef enum SpriteID{
+	SPRITE_nil,
+	SPRITE_tree0,
+	SPRITE_tree1,
+	SPRITE_rock0,
+	SPRITE_player,
+	SPRITE_MAX,
+} SpriteID;
+Sprite sprites[SPRITE_MAX];
+
 typedef enum EntityArchetype{
 	arch_nil = 0,
 	arch_tree = 1,
@@ -10,7 +26,9 @@ typedef struct Entity {
 	bool is_valid;
 	EntityArchetype arch;
 	Vector2 pos;
-
+	SpriteID sprite_id;
+	bool render_sprite;
+	
 } Entity;
 
 #define MAX_ENTITY_COUNT 1024
@@ -19,6 +37,7 @@ typedef struct World {
 
 } World;
 World* world = 0;
+
 
 Entity* entity_create(){
 	Entity* entity_found = 0;
@@ -30,11 +49,33 @@ Entity* entity_create(){
 		}
 	}
 	assert(entity_found, "no more free entities");
+	entity_found->is_valid = true;
 	return entity_found;
 }
 
 void entity_destroy(Entity* entity){
 	memset(entity, 0, sizeof(Entity));
+}
+
+void setup_tree(Entity* en){
+	en->arch = arch_tree;
+	en->sprite_id = SPRITE_tree0;
+	// en->sprite_id = SPRITE_tree1;
+}
+void setup_player(Entity* en){
+	en->arch = arch_player;
+	en->sprite_id = SPRITE_player;
+
+}
+void setup_rock(Entity* en){
+	en->arch = arch_rock;
+	en->sprite_id = SPRITE_rock0;
+}
+Sprite* get_sprite(SpriteID id){
+	if(id >= 0 && id < SPRITE_MAX){
+		return &sprites[id];
+	}
+	return &sprites[0];
 }
 
 int entry(int argc, char **argv) {
@@ -47,23 +88,28 @@ int entry(int argc, char **argv) {
 	window.clear_color = hex_to_rgba(0xA9A9A9ff);
 
 	world = alloc(get_heap_allocator(), sizeof(World));
-
-	Entity* player_en = entity_create();
-	/**************************************************
-	 * figure out how to draw 10 trees next to each other 
-	for (int i = 0; i < 10; i++){
-		
-	}
-	**************************************************/
-	Entity* tree_en = entity_create();
+	memset(world, 0, sizeof(World));
 
 	float64 last_time = os_get_current_time_in_seconds();
 
-	Gfx_Image* player = load_image_from_disk(STR("player.png"), get_heap_allocator());
-	assert(player, "ya dun goofed.");
-	Gfx_Image* tree0 = load_image_from_disk(STR("tree0.png"), get_heap_allocator());
-	assert(tree0, "ya dun goofed.");
+	sprites[SPRITE_player] = (Sprite){ .image=load_image_from_disk(STR("player.png"), get_heap_allocator()), .size=v2(8.0, 8.0)};
+	sprites[SPRITE_tree0] = (Sprite){ .image=load_image_from_disk(STR("tree0.png"), get_heap_allocator()), .size=v2(8.0, 12.0)};
+	sprites[SPRITE_tree1] = (Sprite){ .image=load_image_from_disk(STR("tree1.png"), get_heap_allocator()), .size=v2(8.0, 12.0)};
+	sprites[SPRITE_rock0] = (Sprite){ .image=load_image_from_disk(STR("rock0.png"), get_heap_allocator()), .size=v2(8.0, 6.0)};
 
+	Entity* player_en = entity_create();
+	setup_player(player_en);
+	for (int i = 0; i < 10; i++){
+		Entity* en = entity_create();
+		en->pos = v2(get_random_float32_in_range(-100, 100), get_random_float32_in_range(-100, 100));
+		setup_rock(en);
+	}
+
+	for (int i = 0; i < 10; i++){
+		Entity* en = entity_create();
+		en->pos = v2(get_random_float32_in_range(-100, 100), get_random_float32_in_range(-100, 100));
+		setup_tree(en);
+	}
 
 	while (!window.should_close) {
 		// fps log, delta_t calculation
@@ -94,27 +140,33 @@ int entry(int argc, char **argv) {
 			input_axis.y += 1.0;
 		}
 		input_axis = v2_normalize(input_axis);
-		// movement
+		
 		float64 movespeed = 100.0 * delta_t;
 		player_en->pos = v2_add(player_en->pos, v2_mulf(input_axis, movespeed));
 		// drawing the player
 		reset_temporary_storage();
 
-		{
-			Vector2 size = v2(8.0, 8.0);
-			Matrix4 xform = m4_scalar(1.0);
-			xform         = m4_translate(xform, v3(player_en->pos.x, player_en->pos.y, 0));
-			xform         = m4_translate(xform, v3(size.x *-0.5, 0, 0));
-			draw_image_xform(player, xform, size, COLOR_RED);
+		for(int i = 0; i < MAX_ENTITY_COUNT; i++){
+			Entity* en = &world->entities[i];
+			if(en->is_valid){
+				switch (en->arch)
+				{
+					default:
+					{
+						Sprite* sprite = get_sprite(en->sprite_id);
+						
+						Matrix4 xform = m4_scalar(1.0);
+						xform         = m4_translate(xform, v3(en->pos.x, en->pos.y, 0));
+						xform         = m4_translate(xform, v3(sprite->size.x *-0.5, 0, 0));
+						draw_image_xform(sprite->image, xform, sprite->size, COLOR_WHITE);
+						break;
+					}
+				}
+			}
 		}
 
-		{
-			Vector2 size = v2(8.0, 12.0);
-			Matrix4 xform = m4_scalar(1.0);
-			xform         = m4_translate(xform, v3(0, 0, 0));
-			draw_image_xform(tree0, xform, size, COLOR_GREEN);
-		}
 		
+
 		os_update(); 
 		gfx_update();
 	}
