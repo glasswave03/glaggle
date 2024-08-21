@@ -101,14 +101,14 @@ int entry(int argc, char **argv) {
 	setup_player(player_en);
 	for (int i = 0; i < 10; i++){
 		Entity* en = entity_create();
-		en->pos = v2(get_random_float32_in_range(-100, 100), get_random_float32_in_range(-100, 100));
 		setup_rock(en);
+		en->pos = v2(get_random_float32_in_range(-100, 100), get_random_float32_in_range(-100, 100));
 	}
 
 	for (int i = 0; i < 10; i++){
 		Entity* en = entity_create();
-		en->pos = v2(get_random_float32_in_range(-100, 100), get_random_float32_in_range(-100, 100));
 		setup_tree(en);
+		en->pos = v2(get_random_float32_in_range(-100, 100), get_random_float32_in_range(-100, 100));
 	}
 
 	while (!window.should_close) {
