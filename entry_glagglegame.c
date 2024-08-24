@@ -1,4 +1,23 @@
 
+bool almost_equals(float a, float b, float epsilon) {
+ return fabs(a - b) <= epsilon;
+}
+
+bool animate_f32_to_target(float* value, float target, float delta_t, float rate) {
+	*value += (target - *value) * (1.0 - pow(2.0f, -rate * delta_t));
+	if (almost_equals(*value, target, 0.001f))
+	{
+		*value = target;
+		return true; // reached
+	}
+	return false;
+}
+
+void animate_v2_to_target(Vector2* value, Vector2 target, float delta_t, float rate) {
+	animate_f32_to_target(&(value->x), target.x, delta_t, rate);
+	animate_f32_to_target(&(value->y), target.y, delta_t, rate);
+}
+
 typedef struct Sprite {
 	Gfx_Image* image;
 	Vector2 size;
@@ -14,17 +33,17 @@ typedef enum SpriteID{
 } SpriteID;
 Sprite sprites[SPRITE_MAX];
 
-typedef enum EntityArchetype{
-	arch_nil = 0,
-	arch_tree = 1,
-	arch_rock = 2,
-	arch_player = 3,
+typedef enum ArchetypeID{
+	ARCH_nil = 0,
+	ARCH_tree = 1,
+	ARCH_rock = 2,
+	ARCH_player = 3,
 
-}EntityArchetype;
+}ArchetypeID;
 
 typedef struct Entity {
 	bool is_valid;
-	EntityArchetype arch;
+	ArchetypeID arch;
 	Vector2 pos;
 	SpriteID sprite_id;
 	bool render_sprite;
@@ -58,17 +77,17 @@ void entity_destroy(Entity* entity){
 }
 
 void setup_tree(Entity* en){
-	en->arch = arch_tree;
+	en->arch = ARCH_tree;
 	en->sprite_id = SPRITE_tree0;
 	// en->sprite_id = SPRITE_tree1;
 }
 void setup_player(Entity* en){
-	en->arch = arch_player;
+	en->arch = ARCH_player;
 	en->sprite_id = SPRITE_player;
 
 }
 void setup_rock(Entity* en){
-	en->arch = arch_rock;
+	en->arch = ARCH_rock;
 	en->sprite_id = SPRITE_rock0;
 }
 Sprite* get_sprite(SpriteID id){
@@ -93,8 +112,8 @@ int entry(int argc, char **argv) {
 	float64 last_time = os_get_current_time_in_seconds();
 
 	sprites[SPRITE_player] = (Sprite){ .image=load_image_from_disk(STR("player.png"), get_heap_allocator()), .size=v2(8.0, 8.0)};
-	sprites[SPRITE_tree0] = (Sprite){ .image=load_image_from_disk(STR("tree0.png"), get_heap_allocator()), .size=v2(8.0, 12.0)};
-	sprites[SPRITE_tree1] = (Sprite){ .image=load_image_from_disk(STR("tree1.png"), get_heap_allocator()), .size=v2(8.0, 12.0)};
+	sprites[SPRITE_tree0] = (Sprite){ .image=load_image_from_disk(STR("tree0.png"), get_heap_allocator()), .size=v2(8.0, 14.0)};
+	sprites[SPRITE_tree1] = (Sprite){ .image=load_image_from_disk(STR("tree1.png"), get_heap_allocator()), .size=v2(11.0, 13.0)};
 	sprites[SPRITE_rock0] = (Sprite){ .image=load_image_from_disk(STR("rock0.png"), get_heap_allocator()), .size=v2(8.0, 6.0)};
 
 	Entity* player_en = entity_create();
@@ -102,30 +121,38 @@ int entry(int argc, char **argv) {
 	for (int i = 0; i < 10; i++){
 		Entity* en = entity_create();
 		setup_rock(en);
-		en->pos = v2(get_random_float32_in_range(-100, 100), get_random_float32_in_range(-100, 100));
+		en->pos = v2(get_random_float32_in_range(-200, 200), get_random_float32_in_range(-200, 200));
 	}
 
 	for (int i = 0; i < 10; i++){
 		Entity* en = entity_create();
 		setup_tree(en);
-		en->pos = v2(get_random_float32_in_range(-100, 100), get_random_float32_in_range(-100, 100));
+		en->pos = v2(get_random_float32_in_range(-200, 200), get_random_float32_in_range(-200, 200));
 	}
 
+	Vector2 camera_pos = v2(0, 0);
+
 	while (!window.should_close) {
-		// fps log, delta_t calculation
 		float64 now = os_get_current_time_in_seconds();
 		if ((int)now != (int)last_time) log("%.2f FPS\n%.2fms", 1.0/(now-last_time), (now-last_time)*1000);
 		float64 delta_t = now - last_time;
 		last_time = now;
-		// adjusting zoom, scaling the window
+
+
 		draw_frame.projection = m4_make_orthographic_projection(window.width * -0.5, window.width * 0.5, window.height * -0.5, window.height * 0.5, -1, 10);
-		float64 zoom = 5.3;
-		draw_frame.view = m4_make_scale(v3(1.0/zoom, 1.0/zoom, 1.0));
-		
+		// :camera
+		{
+			Vector2 target_pos = player_en->pos;
+			animate_v2_to_target(&camera_pos, target_pos, delta_t, 8.0f);
+			float64 zoom = 5.3;
+			draw_frame.view = m4_make_scale(v3(1.0, 1.0, 1.0));
+			draw_frame.view = m4_mul(draw_frame.view, m4_make_translation(v3(camera_pos.x, camera_pos.y, 1.0)));
+			draw_frame.view = m4_mul(draw_frame.view, m4_make_scale(v3(1.0/zoom, 1.0/zoom, 1.0)));
+		}
 		if(is_key_just_pressed(KEY_ESCAPE)){
 			window.should_close = true;
 		}
-		// movement
+
 		Vector2 input_axis = v2(0, 0);
 		if (is_key_down('A')) {
 			input_axis.x -= 1.0;
@@ -143,7 +170,7 @@ int entry(int argc, char **argv) {
 		
 		float64 movespeed = 100.0 * delta_t;
 		player_en->pos = v2_add(player_en->pos, v2_mulf(input_axis, movespeed));
-		// drawing the player
+		
 		reset_temporary_storage();
 
 		for(int i = 0; i < MAX_ENTITY_COUNT; i++){
