@@ -121,13 +121,13 @@ int entry(int argc, char **argv) {
 	for (int i = 0; i < 10; i++){
 		Entity* en = entity_create();
 		setup_rock(en);
-		en->pos = v2(get_random_float32_in_range(-200, 200), get_random_float32_in_range(-200, 200));
+		en->pos = v2(get_random_float32_in_range(-100, 100), get_random_float32_in_range(-100, 100));
 	}
 
 	for (int i = 0; i < 10; i++){
 		Entity* en = entity_create();
 		setup_tree(en);
-		en->pos = v2(get_random_float32_in_range(-200, 200), get_random_float32_in_range(-200, 200));
+		en->pos = v2(get_random_float32_in_range(-100, 100), get_random_float32_in_range(-100, 100));
 	}
 
 	Vector2 camera_pos = v2(0, 0);
