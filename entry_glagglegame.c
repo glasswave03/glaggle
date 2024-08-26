@@ -185,6 +185,16 @@ int entry(int argc, char **argv) {
 		os_update(); 
 		reset_temporary_storage();
 
+		// :camera
+		{
+			Vector2 target_pos = player_en->pos;
+			animate_v2_to_target(&camera_pos, target_pos, delta_t, 8.0f);
+			float64 zoom = 5.3;
+			draw_frame.camera_xform = m4_make_scale(v3(1.0, 1.0, 1.0));
+			draw_frame.camera_xform = m4_mul(draw_frame.camera_xform, m4_make_translation(v3(camera_pos.x, camera_pos.y, 1.0)));
+			draw_frame.camera_xform = m4_mul(draw_frame.camera_xform, m4_make_scale(v3(1.0/zoom, 1.0/zoom, 1.0)));
+		}
+		draw_frame.projection = m4_make_orthographic_projection(window.scaled_width * -0.5, window.scaled_width * 0.5, window.scaled_height * -0.5, window.scaled_height * 0.5, -1, 10);
 
 		Vector2 mouse_pos = screen_to_world();
 		// log("%f,  %f", mouse_pos.x, mouse_pos.y);
@@ -198,16 +208,6 @@ int entry(int argc, char **argv) {
 			// draw_text(font, sprint(get_temporary_allocator(), STR("%f %f"), pos.x, pos.y), font_height, pos, v2(1, 1), COLOR_RED);
 		}
 		
-		draw_frame.projection = m4_make_orthographic_projection(window.scaled_width * -0.5, window.scaled_width * 0.5, window.scaled_height * -0.5, window.scaled_height * 0.5, -1, 10);
-		// :camera
-		{
-			Vector2 target_pos = player_en->pos;
-			animate_v2_to_target(&camera_pos, target_pos, delta_t, 8.0f);
-			float64 zoom = 5.3;
-			draw_frame.camera_xform = m4_make_scale(v3(1.0, 1.0, 1.0));
-			draw_frame.camera_xform = m4_mul(draw_frame.camera_xform, m4_make_translation(v3(camera_pos.x, camera_pos.y, 1.0)));
-			draw_frame.camera_xform = m4_mul(draw_frame.camera_xform, m4_make_scale(v3(1.0/zoom, 1.0/zoom, 1.0)));
-		}
 
 		if(is_key_just_pressed(KEY_ESCAPE)){
 			window.should_close = true;
