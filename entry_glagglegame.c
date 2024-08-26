@@ -97,6 +97,28 @@ Sprite* get_sprite(SpriteID id){
 	return &sprites[0];
 }
 
+Vector2 screen_to_world() {
+	float mouse_x = input_frame.mouse_x;
+	float mouse_y = input_frame.mouse_y;
+	Matrix4 proj = draw_frame.projection;
+	Matrix4 view = draw_frame.view;
+	float window_w = window.width;
+	float window_h = window.height;
+
+	// Normalize the mouse coordinates
+	float ndc_x = (mouse_x / (window_w * 0.5f)) - 1.0f;
+	float ndc_y = (mouse_y / (window_h * 0.5f)) - 1.0f;
+
+	// Transform to world coordinates
+	Vector4 world_pos = v4(ndc_x, ndc_y, 0, 1);
+	world_pos = m4_transform(m4_inverse(proj), world_pos);
+	world_pos = m4_transform(view, world_pos);
+	// log("%f, %f", world_pos.x, world_pos.y);
+
+	// Return as 2D vector
+	return (Vector2){ world_pos.x, world_pos.y };
+}
+
 int entry(int argc, char **argv) {
 	
 	window.title = STR("Glagglegame");
@@ -115,6 +137,10 @@ int entry(int argc, char **argv) {
 	sprites[SPRITE_tree0] = (Sprite){ .image=load_image_from_disk(STR("tree0.png"), get_heap_allocator()), .size=v2(8.0, 14.0)};
 	sprites[SPRITE_tree1] = (Sprite){ .image=load_image_from_disk(STR("tree1.png"), get_heap_allocator()), .size=v2(11.0, 13.0)};
 	sprites[SPRITE_rock0] = (Sprite){ .image=load_image_from_disk(STR("rock0.png"), get_heap_allocator()), .size=v2(8.0, 6.0)};
+
+	Gfx_Font *font = load_font_from_disk(STR("C:/windows/fonts/arial.ttf"), get_heap_allocator());
+	assert(font, "Failed loading arial.ttf, %d", GetLastError());
+	const u32 font_height = 48;
 
 	Entity* player_en = entity_create();
 	setup_player(player_en);
@@ -137,9 +163,18 @@ int entry(int argc, char **argv) {
 		if ((int)now != (int)last_time) log("%.2f FPS\n%.2fms", 1.0/(now-last_time), (now-last_time)*1000);
 		float64 delta_t = now - last_time;
 		last_time = now;
-
+		os_update(); 
+		reset_temporary_storage();
 
 		draw_frame.projection = m4_make_orthographic_projection(window.width * -0.5, window.width * 0.5, window.height * -0.5, window.height * 0.5, -1, 10);
+
+		// log("%f, %f", input_frame.mouse_x, input_frame.mouse_y);
+
+		{
+			Vector2 pos = screen_to_world();
+			// log("%f, %f", pos.x, pos.y);
+			draw_text(font, sprint(get_temporary_allocator(), STR("%f %f"), pos.x, pos.y), font_height, pos, v2(1, 1), COLOR_RED);
+		}
 		// :camera
 		{
 			Vector2 target_pos = player_en->pos;
@@ -149,6 +184,7 @@ int entry(int argc, char **argv) {
 			draw_frame.view = m4_mul(draw_frame.view, m4_make_translation(v3(camera_pos.x, camera_pos.y, 1.0)));
 			draw_frame.view = m4_mul(draw_frame.view, m4_make_scale(v3(1.0/zoom, 1.0/zoom, 1.0)));
 		}
+
 		if(is_key_just_pressed(KEY_ESCAPE)){
 			window.should_close = true;
 		}
@@ -171,7 +207,19 @@ int entry(int argc, char **argv) {
 		float64 movespeed = 100.0 * delta_t;
 		player_en->pos = v2_add(player_en->pos, v2_mulf(input_axis, movespeed));
 		
-		reset_temporary_storage();
+
+		const int tile_width = 8;
+
+		for (int x = 0; x < 10; x++) {
+			for (int y = 0; y < 10; y++) {
+				if ((x + (y % 2 == 0)) % 2 == 0) {
+					Vector4 col = v4(0.1, 0.1, 0.1, 0.1);
+					float x_pos = x * tile_width;
+					float y_pos = y * tile_width;
+					draw_rect(v2(x_pos, y_pos), v2(tile_width, tile_width), col);
+				}
+			}
+		}
 
 		for(int i = 0; i < MAX_ENTITY_COUNT; i++){
 			Entity* en = &world->entities[i];
@@ -186,15 +234,15 @@ int entry(int argc, char **argv) {
 						xform         = m4_translate(xform, v3(en->pos.x, en->pos.y, 0));
 						xform         = m4_translate(xform, v3(sprite->size.x *-0.5, 0, 0));
 						draw_image_xform(sprite->image, xform, sprite->size, COLOR_WHITE);
+
+						draw_text(font, sprint(get_temporary_allocator(), STR("%f %f"), en->pos.x, en->pos.y), font_height, en->pos, v2(0.1, 0.1), COLOR_WHITE);
 						break;
 					}
 				}
 			}
 		}
 
-		
 
-		os_update(); 
 		gfx_update();
 	}
 
