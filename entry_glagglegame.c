@@ -1,4 +1,13 @@
 const int tile_width = 8;
+const int entity_selection_radius = 16.0f;
+
+inline float v2_dist(Vector2 a, Vector2 b){
+	return v2_length(v2_sub(a, b));
+}
+
+float sin_breathe(int time, float rate){
+	return sin((time * rate + 1) * 0.5);
+}
 
 int world_pos_to_tile_pos(float world_pos) {
 	return roundf(world_pos / (float)tile_width);
@@ -48,6 +57,10 @@ typedef enum SpriteID{
 } SpriteID;
 Sprite sprites[SPRITE_MAX];
 
+Vector2 get_sprite_size(Sprite* sprite){
+	return (Vector2){ sprite->image->width, sprite->image->height };
+}
+
 typedef enum ArchetypeID{
 	ARCH_nil = 0,
 	ARCH_tree = 1,
@@ -72,6 +85,10 @@ typedef struct World {
 } World;
 World* world = 0;
 
+typedef struct WorldFrame{
+	Entity* selected_entity;
+}WorldFrame;
+WorldFrame world_frame;
 
 Entity* entity_create(){
 	Entity* entity_found = 0;
@@ -148,10 +165,10 @@ int entry(int argc, char **argv) {
 
 	float64 last_time = os_get_elapsed_seconds();
 
-	sprites[SPRITE_player] = (Sprite){ .image=load_image_from_disk(STR("player.png"), get_heap_allocator()), .size=v2(8.0, 8.0)};
-	sprites[SPRITE_tree0] = (Sprite){ .image=load_image_from_disk(STR("tree0.png"), get_heap_allocator()), .size=v2(8.0, 14.0)};
-	sprites[SPRITE_tree1] = (Sprite){ .image=load_image_from_disk(STR("tree1.png"), get_heap_allocator()), .size=v2(11.0, 13.0)};
-	sprites[SPRITE_rock0] = (Sprite){ .image=load_image_from_disk(STR("rock0.png"), get_heap_allocator()), .size=v2(8.0, 6.0)};
+	sprites[SPRITE_player] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/player.png"), get_heap_allocator()) };
+	sprites[SPRITE_tree0] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/tree0.png"), get_heap_allocator()) };
+	sprites[SPRITE_tree1] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/tree1.png"), get_heap_allocator()) };
+	sprites[SPRITE_rock0] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/rock0.png"), get_heap_allocator()) };
 
 	Gfx_Font *font = load_font_from_disk(STR("C:/windows/fonts/arial.ttf"), get_heap_allocator());
 	assert(font, "Failed loading arial.ttf, %d", GetLastError());
@@ -184,6 +201,7 @@ int entry(int argc, char **argv) {
 		last_time = now;
 		os_update(); 
 		reset_temporary_storage();
+		world_frame = (WorldFrame){0};
 
 		// :camera
 		{
@@ -196,16 +214,34 @@ int entry(int argc, char **argv) {
 		}
 		draw_frame.projection = m4_make_orthographic_projection(window.scaled_width * -0.5, window.scaled_width * 0.5, window.scaled_height * -0.5, window.scaled_height * 0.5, -1, 10);
 
-		Vector2 mouse_pos = screen_to_world();
-		// log("%f,  %f", mouse_pos.x, mouse_pos.y);
+		Vector2 mouse_pos_world = screen_to_world();
+		// log("%f,  %f", mouse_pos_world.x, mouse_pos_world.y);
 
-		int mouse_tile_x = world_pos_to_tile_pos(mouse_pos.x);
-		int mouse_tile_y = world_pos_to_tile_pos(mouse_pos.y);
+		int mouse_tile_x = world_pos_to_tile_pos(mouse_pos_world.x);
+		int mouse_tile_y = world_pos_to_tile_pos(mouse_pos_world.y);
 
 		{
 			// Vector2 pos = screen_to_world();
 			// log("%f, %f", pos.x, pos.y);
 			// draw_text(font, sprint(get_temporary_allocator(), STR("%f %f"), pos.x, pos.y), font_height, pos, v2(1, 1), COLOR_RED);
+			float smallest_dist = INFINITY;
+
+			for(int i = 0; i < MAX_ENTITY_COUNT; i++){
+				Entity* en = &world->entities[i];
+				if(en->is_valid){
+					Sprite* sprite = get_sprite(en->sprite_id);
+					int entity_tile_x = world_pos_to_tile_pos(en->pos.x);
+					int entity_tile_y = world_pos_to_tile_pos(en->pos.y);
+					float dist = fabsf(v2_dist(en->pos, mouse_pos_world));
+					if(dist < entity_selection_radius){
+						if(!world_frame.selected_entity || (dist < smallest_dist)){
+							world_frame.selected_entity = en;
+							smallest_dist = dist;
+							
+						}
+					}
+				}
+			}
 		}
 		
 
@@ -250,23 +286,31 @@ int entry(int argc, char **argv) {
 
 			draw_rect(v2(tile_pos_to_world_pos(mouse_tile_x) + tile_width * -0.5, tile_pos_to_world_pos(mouse_tile_y) + tile_width * -0.5), v2(tile_width, tile_width), v4(0.5, 0.5, 0.5, 0.5));
 		}
-		
-		for(int i = 0; i < MAX_ENTITY_COUNT; i++){
-			Entity* en = &world->entities[i];
-			if(en->is_valid){
-				switch (en->arch)
-				{
-					default:
+		// :render
+		{
+			for(int i = 0; i < MAX_ENTITY_COUNT; i++){
+				Entity* en = &world->entities[i];
+				if(en->is_valid){
+					switch (en->arch)
 					{
-						Sprite* sprite = get_sprite(en->sprite_id);
-						
-						Matrix4 xform = m4_scalar(1.0);
-						xform         = m4_translate(xform, v3(en->pos.x, en->pos.y, 0));
-						xform         = m4_translate(xform, v3(sprite->size.x *-0.5, 0, 0));
-						draw_image_xform(sprite->image, xform, sprite->size, COLOR_WHITE);
+						default:
+						{
+							Sprite* sprite = get_sprite(en->sprite_id);
+							
+							Matrix4 xform = m4_scalar(1.0);
+							xform         = m4_translate(xform, v3(0, tile_width * -0.5, 0));
+							xform         = m4_translate(xform, v3(en->pos.x, en->pos.y, 0));
+							xform         = m4_translate(xform, v3(sprite->image->width *-0.5, 0, 0));
+							Vector4 col = COLOR_WHITE;
+							if (world_frame.selected_entity == en) {
+								col = COLOR_RED;
+							}
 
-						draw_text(font, sprint(get_temporary_allocator(), STR("%f %f"), en->pos.x, en->pos.y), font_height, en->pos, v2(0.1, 0.1), COLOR_WHITE);
-						break;
+							draw_image_xform(sprite->image, xform, get_sprite_size(sprite), col);
+
+							// draw_text(font, sprint(get_temporary_allocator(), STR("%f %f"), en->pos.x, en->pos.y), font_height, en->pos, v2(0.1, 0.1), COLOR_WHITE);
+							break;
+						}
 					}
 				}
 			}
