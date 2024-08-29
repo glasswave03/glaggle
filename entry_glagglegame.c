@@ -1,12 +1,14 @@
 const int tile_width = 8;
 const int entity_selection_radius = 16.0f;
+const int rock_health = 2;
+const int tree_health = 2;
 
 inline float v2_dist(Vector2 a, Vector2 b){
 	return v2_length(v2_sub(a, b));
 }
 
 float sin_breathe(int time, float rate){
-	return sin((time * rate + 1) * 0.5);
+	return sin((time * rate + 1) * 2);
 }
 
 int world_pos_to_tile_pos(float world_pos) {
@@ -44,7 +46,6 @@ void animate_v2_to_target(Vector2* value, Vector2 target, float delta_t, float r
 
 typedef struct Sprite {
 	Gfx_Image* image;
-	Vector2 size;
 } Sprite;
 
 typedef enum SpriteID{
@@ -53,6 +54,8 @@ typedef enum SpriteID{
 	SPRITE_tree1,
 	SPRITE_rock0,
 	SPRITE_player,
+	SPRITE_item_rock,
+	SPRITE_item_wood,
 	SPRITE_MAX,
 } SpriteID;
 Sprite sprites[SPRITE_MAX];
@@ -67,6 +70,10 @@ typedef enum ArchetypeID{
 	ARCH_rock = 2,
 	ARCH_player = 3,
 
+	ARCH_item_rock = 4,
+	ARCH_item_wood = 5,
+
+	ARCH_MAX
 }ArchetypeID;
 
 typedef struct Entity {
@@ -75,7 +82,10 @@ typedef struct Entity {
 	Vector2 pos;
 	SpriteID sprite_id;
 	bool render_sprite;
-	
+	bool is_destructible;
+	bool is_item;
+	bool is_selectable;
+	int health;
 } Entity;
 
 #define MAX_ENTITY_COUNT 1024
@@ -112,16 +122,36 @@ void setup_tree(Entity* en){
 	en->arch = ARCH_tree;
 	en->sprite_id = SPRITE_tree0;
 	// en->sprite_id = SPRITE_tree1;
+	en->health = tree_health;
+	en->is_destructible = true;
+	en->is_selectable = true;
 }
 void setup_player(Entity* en){
 	en->arch = ARCH_player;
 	en->sprite_id = SPRITE_player;
+	en->is_selectable = false;
 
 }
 void setup_rock(Entity* en){
 	en->arch = ARCH_rock;
 	en->sprite_id = SPRITE_rock0;
+	en->health = rock_health;
+	en->is_destructible = true;
+	en->is_selectable = true;
 }
+void setup_item_rock(Entity* en){
+	en->arch = ARCH_item_rock;
+	en->sprite_id = SPRITE_item_rock;
+	en->is_item = true;
+	en->is_selectable = false;
+}
+void setup_item_wood(Entity* en){
+	en->arch = ARCH_item_wood;
+	en->sprite_id = SPRITE_item_wood;
+	en->is_item = true;
+	en->is_selectable = false;
+}
+
 Sprite* get_sprite(SpriteID id){
 	if(id >= 0 && id < SPRITE_MAX){
 		return &sprites[id];
@@ -169,6 +199,8 @@ int entry(int argc, char **argv) {
 	sprites[SPRITE_tree0] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/tree0.png"), get_heap_allocator()) };
 	sprites[SPRITE_tree1] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/tree1.png"), get_heap_allocator()) };
 	sprites[SPRITE_rock0] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/rock0.png"), get_heap_allocator()) };
+	sprites[SPRITE_item_rock] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/item_rock.png"), get_heap_allocator()) };
+	sprites[SPRITE_item_wood] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/item_wood.png"), get_heap_allocator()) };
 
 	Gfx_Font *font = load_font_from_disk(STR("C:/windows/fonts/arial.ttf"), get_heap_allocator());
 	assert(font, "Failed loading arial.ttf, %d", GetLastError());
@@ -228,7 +260,7 @@ int entry(int argc, char **argv) {
 
 			for(int i = 0; i < MAX_ENTITY_COUNT; i++){
 				Entity* en = &world->entities[i];
-				if(en->is_valid){
+				if(en->is_valid && en->is_selectable){
 					Sprite* sprite = get_sprite(en->sprite_id);
 					int entity_tile_x = world_pos_to_tile_pos(en->pos.x);
 					int entity_tile_y = world_pos_to_tile_pos(en->pos.y);
@@ -286,6 +318,30 @@ int entry(int argc, char **argv) {
 
 			draw_rect(v2(tile_pos_to_world_pos(mouse_tile_x) + tile_width * -0.5, tile_pos_to_world_pos(mouse_tile_y) + tile_width * -0.5), v2(tile_width, tile_width), v4(0.5, 0.5, 0.5, 0.5));
 		}
+		Entity* selected_en = world_frame.selected_entity;
+		{
+			if(is_key_just_pressed(MOUSE_BUTTON_LEFT) && selected_en->is_destructible && selected_en){
+				consume_key_just_pressed(MOUSE_BUTTON_LEFT);
+				selected_en->health -= 1;
+				if(selected_en->health <= 0){
+					Entity* en = entity_create();
+					switch (selected_en->arch)
+					{
+					case ARCH_rock:
+						setup_item_rock(en);
+						en->pos = selected_en->pos;
+						break;
+					case ARCH_tree:
+						setup_item_wood(en);
+						en->pos = selected_en->pos;
+						break;
+					default:
+						break;
+					}
+					entity_destroy(selected_en);
+				}
+			}
+		}
 		// :render
 		{
 			for(int i = 0; i < MAX_ENTITY_COUNT; i++){
@@ -298,9 +354,12 @@ int entry(int argc, char **argv) {
 							Sprite* sprite = get_sprite(en->sprite_id);
 							
 							Matrix4 xform = m4_scalar(1.0);
+							if(en->is_item){
+								xform = m4_translate(xform, v3(0, sin_breathe(os_get_elapsed_seconds(), 1.0), 0));
+							}
 							xform         = m4_translate(xform, v3(0, tile_width * -0.5, 0));
 							xform         = m4_translate(xform, v3(en->pos.x, en->pos.y, 0));
-							xform         = m4_translate(xform, v3(sprite->image->width *-0.5, 0, 0));
+							xform         = m4_translate(xform, v3(sprite->image->width * -0.5, 0, 0));
 							Vector4 col = COLOR_WHITE;
 							if (world_frame.selected_entity == en) {
 								col = COLOR_RED;
