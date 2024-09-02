@@ -171,8 +171,8 @@ Vector2 screen_to_world() {
 	float mouse_y = input_frame.mouse_y;
 	Matrix4 proj = draw_frame.projection;
 	Matrix4 view = draw_frame.camera_xform;
-	float window_w = window.scaled_width;
-	float window_h = window.scaled_height;
+	float window_w = window.width;
+	float window_h = window.height;
 
 	// Normalize the mouse coordinates
 	float ndc_x = (mouse_x / (window_w * 0.5f)) - 1.0f;
@@ -191,8 +191,8 @@ Vector2 screen_to_world() {
 int entry(int argc, char **argv) {
 	
 	window.title = STR("Glagglegame");
-	window.scaled_width = 1280; // We need to set the scaled size if we want to handle system scaling (DPI)
-	window.scaled_height = 720; 
+	window.width = 1280; 
+	window.height = 720; 
 	window.x = 200;
 	window.y = 90;
 	window.clear_color = hex_to_rgba(0xA9A9A9ff);
@@ -221,7 +221,7 @@ int entry(int argc, char **argv) {
 		setup_rock(en);
 		en->pos = v2(get_random_float32_in_range(-100, 100), get_random_float32_in_range(-100, 100));
 		en->pos = round_v2_to_tile(en->pos);
-		en->pos.y -= tile_width * 0.5;
+		//en->pos.y -= tile_width * 0.5;
 	}
 
 	for (int i = 0; i < 10; i++){
@@ -252,7 +252,7 @@ int entry(int argc, char **argv) {
 			draw_frame.camera_xform = m4_mul(draw_frame.camera_xform, m4_make_translation(v3(camera_pos.x, camera_pos.y, 1.0)));
 			draw_frame.camera_xform = m4_mul(draw_frame.camera_xform, m4_make_scale(v3(1.0/zoom, 1.0/zoom, 1.0)));
 		}
-		draw_frame.projection = m4_make_orthographic_projection(window.scaled_width * -0.5, window.scaled_width * 0.5, window.scaled_height * -0.5, window.scaled_height * 0.5, -1, 10);
+		draw_frame.projection = m4_make_orthographic_projection(window.width * -0.5, window.width * 0.5, window.height * -0.5, window.height * 0.5, -1, 10);
 
 		Vector2 mouse_pos_world = screen_to_world();
 		// log("%f,  %f", mouse_pos_world.x, mouse_pos_world.y);
@@ -295,6 +295,7 @@ int entry(int argc, char **argv) {
 				}
 			}
 		}
+		
 
 		if(is_key_just_pressed(KEY_ESCAPE)){
 			window.should_close = true;
@@ -337,6 +338,7 @@ int entry(int argc, char **argv) {
 
 			draw_rect(v2(tile_pos_to_world_pos(mouse_tile_x) + tile_width * -0.5, tile_pos_to_world_pos(mouse_tile_y) + tile_width * -0.5), v2(tile_width, tile_width), v4(0.5, 0.5, 0.5, 0.5));
 		}
+
 		Entity* selected_en = world_frame.selected_entity;
 		{
 			if(is_key_just_pressed(MOUSE_BUTTON_LEFT) && selected_en->is_destructible && selected_en){
@@ -361,7 +363,7 @@ int entry(int argc, char **argv) {
 				}
 			}
 		}
-		// :render
+		// :render entities
 		{
 			for(int i = 0; i < MAX_ENTITY_COUNT; i++){
 				Entity* en = &world->entities[i];
@@ -394,6 +396,19 @@ int entry(int argc, char **argv) {
 			}
 		}
 
+		// inventory render
+		{
+			if(is_key_down('I')){
+				
+				draw_rect(v2(player_en->pos.x - 10, player_en->pos.y + 8), v2(20, 15), v4(0.1, 0.1, 0.1, 0.5));
+				for(int i = 0; i < ARCH_MAX; i++){
+					ItemData* en = &world->inventory_items[i];
+					if(en->amount > 0){
+						draw_text(font, sprint(get_temporary_allocator(), STR("%d"), en->amount), font_height, v2_add(player_en->pos, v2((i * 5) - 20, 16)), v2(0.2, 0.2), COLOR_RED);
+					}
+				}
+			}
+		}
 
 		gfx_update();
 	}
