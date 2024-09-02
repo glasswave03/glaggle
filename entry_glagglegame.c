@@ -1,7 +1,9 @@
 const int tile_width = 8;
-const int entity_selection_radius = 16.0f;
+const float entity_selection_radius = 16.0f;
+const float player_pickup_radius = 20.0f;
 const int rock_health = 2;
 const int tree_health = 2;
+
 
 inline float v2_dist(Vector2 a, Vector2 b){
 	return v2_length(v2_sub(a, b));
@@ -88,9 +90,14 @@ typedef struct Entity {
 	int health;
 } Entity;
 
+typedef struct ItemData {
+	int amount;
+} ItemData;
+
 #define MAX_ENTITY_COUNT 1024
 typedef struct World {
 	Entity entities[MAX_ENTITY_COUNT];
+	ItemData inventory_items[ARCH_MAX];
 
 } World;
 World* world = 0;
@@ -206,6 +213,7 @@ int entry(int argc, char **argv) {
 	assert(font, "Failed loading arial.ttf, %d", GetLastError());
 	const u32 font_height = 48;
 
+	// :init
 	Entity* player_en = entity_create();
 	setup_player(player_en);
 	for (int i = 0; i < 10; i++){
@@ -275,7 +283,18 @@ int entry(int argc, char **argv) {
 				}
 			}
 		}
-		
+		// pickup
+		{
+			for(int i = 0; i < MAX_ENTITY_COUNT; i++){
+				Entity* en = &world->entities[i];
+				if(en->is_valid && en->is_item){
+					if(fabsf(v2_dist(en->pos, player_en->pos)) < player_pickup_radius){
+						world->inventory_items[en->arch].amount += 1;
+						entity_destroy(en);
+					}
+				}
+			}
+		}
 
 		if(is_key_just_pressed(KEY_ESCAPE)){
 			window.should_close = true;
