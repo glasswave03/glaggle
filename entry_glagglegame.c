@@ -92,6 +92,7 @@ typedef struct Entity {
 
 typedef struct ItemData {
 	int amount;
+	ArchetypeID type;
 } ItemData;
 
 #define MAX_ENTITY_COUNT 1024
@@ -166,6 +167,15 @@ Sprite* get_sprite(SpriteID id){
 	return &sprites[0];
 }
 
+SpriteID get_sprite_id_from_arch(ArchetypeID arch){
+	switch (arch)
+	{
+	case ARCH_item_rock: return SPRITE_item_rock; break;
+	case ARCH_item_wood: return SPRITE_item_wood; break;
+	default: return 0;
+	}
+}
+
 Vector2 screen_to_world() {
 	float mouse_x = input_frame.mouse_x;
 	float mouse_y = input_frame.mouse_y;
@@ -202,6 +212,7 @@ int entry(int argc, char **argv) {
 
 	float64 last_time = os_get_elapsed_seconds();
 
+	sprites[0] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/nil.png"), get_heap_allocator()) };
 	sprites[SPRITE_player] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/player.png"), get_heap_allocator()) };
 	sprites[SPRITE_tree0] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/tree0.png"), get_heap_allocator()) };
 	sprites[SPRITE_tree1] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/tree1.png"), get_heap_allocator()) };
@@ -283,42 +294,7 @@ int entry(int argc, char **argv) {
 				}
 			}
 		}
-		// pickup
-		{
-			for(int i = 0; i < MAX_ENTITY_COUNT; i++){
-				Entity* en = &world->entities[i];
-				if(en->is_valid && en->is_item){
-					if(fabsf(v2_dist(en->pos, player_en->pos)) < player_pickup_radius){
-						world->inventory_items[en->arch].amount += 1;
-						entity_destroy(en);
-					}
-				}
-			}
-		}
 		
-
-		if(is_key_just_pressed(KEY_ESCAPE)){
-			window.should_close = true;
-		}
-
-		Vector2 input_axis = v2(0, 0);
-		if (is_key_down('A')) {
-			input_axis.x -= 1.0;
-		}
-		if (is_key_down('D')) {
-			input_axis.x += 1.0;
-		}
-		if (is_key_down('S')) {
-			input_axis.y -= 1.0;
-		}
-		if (is_key_down('W')) {
-			input_axis.y += 1.0;
-		}
-		input_axis = v2_normalize(input_axis);
-		
-		float64 movespeed = 100.0 * delta_t;
-		player_en->pos = v2_add(player_en->pos, v2_mulf(input_axis, movespeed));
-
 		// :tile rendering
 		{
 			int player_tile_x = world_pos_to_tile_pos(player_en->pos.x);
@@ -338,9 +314,23 @@ int entry(int argc, char **argv) {
 
 			draw_rect(v2(tile_pos_to_world_pos(mouse_tile_x) + tile_width * -0.5, tile_pos_to_world_pos(mouse_tile_y) + tile_width * -0.5), v2(tile_width, tile_width), v4(0.5, 0.5, 0.5, 0.5));
 		}
-
-		Entity* selected_en = world_frame.selected_entity;
+		
+		// :update entities
 		{
+			for(int i = 0; i < MAX_ENTITY_COUNT; i++){
+				Entity* en = &world->entities[i];
+				if(en->is_valid && en->is_item){
+					if(fabsf(v2_dist(en->pos, player_en->pos)) < player_pickup_radius){
+						world->inventory_items[en->arch].amount += 1;
+						entity_destroy(en);
+					}
+				}
+			}
+		}
+
+		// :click destroy
+		{
+			Entity* selected_en = world_frame.selected_entity;
 			if(is_key_just_pressed(MOUSE_BUTTON_LEFT) && selected_en->is_destructible && selected_en){
 				consume_key_just_pressed(MOUSE_BUTTON_LEFT);
 				selected_en->health -= 1;
@@ -363,6 +353,7 @@ int entry(int argc, char **argv) {
 				}
 			}
 		}
+
 		// :render entities
 		{
 			for(int i = 0; i < MAX_ENTITY_COUNT; i++){
@@ -395,12 +386,16 @@ int entry(int argc, char **argv) {
 				}
 			}
 		}
-
-		// inventory render
+		
+		// :inventory UI
 		{
+			/* TODO - cool inventory hovering above player and following
+			Vector2 target_pos = player_en->pos;
+			Vector2 inv_pos = v2(player_en->pos.x - 10, player_en->pos.y + 8);
+			animate_v2_to_target(&inv_pos, target_pos, delta_t, 1.0f);
 			if(is_key_down('I')){
 				
-				draw_rect(v2(player_en->pos.x - 10, player_en->pos.y + 8), v2(20, 15), v4(0.1, 0.1, 0.1, 0.5));
+				draw_rect(inv_pos, v2(20, 15), v4(0.1, 0.1, 0.1, 0.5));
 				for(int i = 0; i < ARCH_MAX; i++){
 					ItemData* en = &world->inventory_items[i];
 					if(en->amount > 0){
@@ -408,7 +403,51 @@ int entry(int argc, char **argv) {
 					}
 				}
 			}
+			*/
+
+			draw_frame.camera_xform = m4_scalar(1.0);
+			draw_frame.projection = m4_make_orthographic_projection(0.0, 240.0, 0.0, 135.0, -1, 10);
+
+			float x_pos = 30.0;
+			float y_pos = 30.0;
+			Matrix4 xform = m4_identity();
+			int item_count = 0;
+			for(int i = 0; i < ARCH_MAX; i++){
+				ItemData* item = &world->inventory_items[i];
+				if(item->amount > 0){
+					item_count += 1;
+					xform = m4_translate(xform, v3(x_pos, y_pos, 0.0));
+					draw_rect_xform(xform, v2(8.0, 8.0), COLOR_BLACK);
+					Sprite* sprite = get_sprite(get_sprite_id_from_arch(i));
+					draw_image_xform(sprite->image, xform, get_sprite_size(sprite), COLOR_WHITE);
+					x_pos += 30.0;
+				}
+			}
 		}
+
+		if(is_key_just_pressed(KEY_ESCAPE)){
+			window.should_close = true;
+		}
+
+		Vector2 input_axis = v2(0, 0);
+		if (is_key_down('A')) {
+			input_axis.x -= 1.0;
+		}
+		if (is_key_down('D')) {
+			input_axis.x += 1.0;
+		}
+		if (is_key_down('S')) {
+			input_axis.y -= 1.0;
+		}
+		if (is_key_down('W')) {
+			input_axis.y += 1.0;
+		}
+		input_axis = v2_normalize(input_axis);
+		
+		float64 movespeed = 100.0 * delta_t;
+		player_en->pos = v2_add(player_en->pos, v2_mulf(input_axis, movespeed));
+
+		
 
 		gfx_update();
 	}
