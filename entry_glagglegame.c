@@ -4,6 +4,63 @@ const float player_pickup_radius = 20.0f;
 const int rock_health = 2;
 const int tree_health = 2;
 
+typedef struct Range2f {
+	Vector2 min;
+	Vector2 max;
+} Range2f;
+
+inline Range2f range2f_make(Vector2 min, Vector2 max) { return (Range2f){ min, max }; }
+
+Range2f range2f_shift(Range2f r, Vector2 shift){
+	r.min = v2_add(r.min, shift);
+	r.max = v2_add(r.max, shift);
+	return r;
+}
+
+Range2f range2f_make_bottom_center(Vector2 size){
+	Range2f range = {0};
+	range.max = size;
+	range = range2f_shift(range, v2(size.x * -0.5, 0.0));
+	return range;
+}
+
+Vector2 range2f_size(Range2f range){
+	Vector2 size = {0};
+	size = v2_sub(range.min, range.max);
+	size.x = fabsf(size.x);
+	size.y = fabsf(size.y);
+	return size;
+}
+
+bool range2f_contains(Range2f range, Vector2 v){
+	return v.x >= range.min.x && v.x <= range.max.x && v.y >= range.min.y && v.y <= range.max.y;
+}
+
+Vector2 range2f_get_center(Range2f r) {
+	return (Vector2) { (r.max.x - r.min.x) * 0.5 + r.min.x, (r.max.y - r.min.y) * 0.5 + r.min.y };
+}
+Draw_Quad ndc_quad_to_screen_quad(Draw_Quad ndc_quad) {
+
+	// NOTE: we're assuming these are the screen space matricies.
+	Matrix4 proj = draw_frame.projection;
+	Matrix4 view = draw_frame.camera_xform;
+
+	Matrix4 ndc_to_screen_space = m4_identity();
+	ndc_to_screen_space = m4_mul(ndc_to_screen_space, m4_inverse(proj));
+	ndc_to_screen_space = m4_mul(ndc_to_screen_space, view);
+
+	ndc_quad.bottom_left = m4_transform(ndc_to_screen_space, v4(v2_expand(ndc_quad.bottom_left), 0, 1)).xy;
+	ndc_quad.bottom_right = m4_transform(ndc_to_screen_space, v4(v2_expand(ndc_quad.bottom_right), 0, 1)).xy;
+	ndc_quad.top_left = m4_transform(ndc_to_screen_space, v4(v2_expand(ndc_quad.top_left), 0, 1)).xy;
+	ndc_quad.top_right = m4_transform(ndc_to_screen_space, v4(v2_expand(ndc_quad.top_right), 0, 1)).xy;
+
+	return ndc_quad;
+}
+
+Range2f quad_to_range(Draw_Quad quad) {
+	return (Range2f){quad.bottom_left, quad.top_right};
+}
+
 
 inline float v2_dist(Vector2 a, Vector2 b){
 	return v2_length(v2_sub(a, b));
@@ -176,6 +233,21 @@ SpriteID get_sprite_id_from_arch(ArchetypeID arch){
 	}
 }
 
+Vector2 get_mouse_pos_in_ndc() {
+	float mouse_x = input_frame.mouse_x;
+	float mouse_y = input_frame.mouse_y;
+	Matrix4 proj = draw_frame.projection;
+	Matrix4 view = draw_frame.camera_xform;
+	float window_w = window.width;
+	float window_h = window.height;
+
+	// Normalize the mouse coordinates
+	float ndc_x = (mouse_x / (window_w * 0.5f)) - 1.0f;
+	float ndc_y = (mouse_y / (window_h * 0.5f)) - 1.0f;
+
+	return (Vector2){ ndc_x, ndc_y };
+}
+
 Vector2 screen_to_world() {
 	float mouse_x = input_frame.mouse_x;
 	float mouse_y = input_frame.mouse_y;
@@ -247,7 +319,7 @@ int entry(int argc, char **argv) {
 
 	while (!window.should_close) {
 		float64 now = os_get_elapsed_seconds();
-		if ((int)now != (int)last_time) log("%.2f FPS\n%.2fms", 1.0/(now-last_time), (now-last_time)*1000);
+		// if ((int)now != (int)last_time) log("%.2f FPS\n%.2fms", 1.0/(now-last_time), (now-last_time)*1000);
 		float64 delta_t = now - last_time;
 		last_time = now;
 		os_update(); 
@@ -389,10 +461,11 @@ int entry(int argc, char **argv) {
 		
 		// :inventory UI
 		{
-			/* TODO - cool inventory hovering above player and following
+			/*
+			// TODO - cool inventory hovering above player and following
 			Vector2 target_pos = player_en->pos;
 			Vector2 inv_pos = v2(player_en->pos.x - 10, player_en->pos.y + 8);
-			animate_v2_to_target(&inv_pos, target_pos, delta_t, 1.0f);
+			animate_v2_to_target(&inv_pos, camera_pos, delta_t, 1.0f);
 			if(is_key_down('I')){
 				
 				draw_rect(inv_pos, v2(20, 15), v4(0.1, 0.1, 0.1, 0.5));
@@ -404,25 +477,69 @@ int entry(int argc, char **argv) {
 				}
 			}
 			*/
-
-			draw_frame.camera_xform = m4_scalar(1.0);
-			draw_frame.projection = m4_make_orthographic_projection(0.0, 240.0, 0.0, 135.0, -1, 10);
-
-			float x_pos = 30.0;
-			float y_pos = 30.0;
-			Matrix4 xform = m4_identity();
 			int item_count = 0;
 			for(int i = 0; i < ARCH_MAX; i++){
 				ItemData* item = &world->inventory_items[i];
 				if(item->amount > 0){
-					item_count += 1;
-					xform = m4_translate(xform, v3(x_pos, y_pos, 0.0));
-					draw_rect_xform(xform, v2(8.0, 8.0), COLOR_BLACK);
-					Sprite* sprite = get_sprite(get_sprite_id_from_arch(i));
-					draw_image_xform(sprite->image, xform, get_sprite_size(sprite), COLOR_WHITE);
-					x_pos += 30.0;
+					item_count++;
 				}
 			}
+			float width = 240.0;
+			float height = 135.0;
+
+			draw_frame.camera_xform = m4_scalar(1.0);
+			draw_frame.projection = m4_make_orthographic_projection(0.0, width, 0.0, height, -1, 10);
+
+			float y_pos = 70.0;
+			
+			const float icon_width = 8.0;
+			float icon_object = icon_width;
+
+			const int icon_count = 8;
+			float hotbar_width = icon_object * icon_count;
+
+			float x_start_pos = ((width - hotbar_width) / 2.0) + (icon_object * 0.5);
+
+			// bg box
+			{
+				Matrix4 xform = m4_identity();
+				xform = m4_translate(xform, v3(x_start_pos, y_pos, 0));
+				draw_rect_xform(xform, v2(hotbar_width, icon_width), v4(0, 0, 0, 0.5));
+			}
+			
+			float slot_index = 0;
+			for(int i = 0; i < ARCH_MAX; i++){
+				ItemData* item = &world->inventory_items[i];
+				if(item->amount > 0){
+					float is_selected_alpha = 0.0;
+					float slot_index_offset = slot_index * icon_object;
+
+					Matrix4 xform = m4_identity();
+					xform = m4_translate(xform, v3(x_start_pos + slot_index_offset, y_pos, 0.0));
+
+					Sprite* sprite = get_sprite(get_sprite_id_from_arch(i));
+					
+					Draw_Quad* quad = draw_rect_xform(xform, v2(8, 8), v4(1, 1, 1, 0.2));
+					Range2f icon_box = quad_to_range(*quad);
+					if (range2f_contains(icon_box, get_mouse_pos_in_ndc())) {
+						is_selected_alpha = 1.0;
+					}
+
+					Matrix4 box_bottom_right_xform = xform;
+					xform = m4_translate(xform, v3(icon_width * 0.5, icon_width * 0.5, 0.0));
+					// TODO - selection polish
+					if(is_selected_alpha == 1.0)
+					{
+						float scale_adjust = 0.1 * sin_breathe(os_get_elapsed_seconds(), 20.0);
+						xform = m4_scale(xform, v3(1 + scale_adjust, 1 + scale_adjust, 1));
+					}
+					xform = m4_translate(xform, v3(get_sprite_size(sprite).x * -0.5, get_sprite_size(sprite).y * -0.5, 0.0));
+					draw_image_xform(sprite->image, xform, get_sprite_size(sprite), COLOR_WHITE);
+
+					slot_index++;
+				}
+			}
+			
 		}
 
 		if(is_key_just_pressed(KEY_ESCAPE)){
