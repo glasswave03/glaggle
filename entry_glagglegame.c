@@ -1,3 +1,4 @@
+Vector4 bg_box_col = {0, 0, 0, 0.5};
 const int tile_width = 8;
 const float entity_selection_radius = 16.0f;
 const float player_pickup_radius = 20.0f;
@@ -152,10 +153,19 @@ typedef struct ItemData {
 	ArchetypeID type;
 } ItemData;
 
+typedef enum UXState {
+	UX_nil,
+	UX_inventory,
+} UXState;
+
+// :world
 #define MAX_ENTITY_COUNT 1024
 typedef struct World {
 	Entity entities[MAX_ENTITY_COUNT];
 	ItemData inventory_items[ARCH_MAX];
+	UXState ux_state;
+	float inventory_alpha;
+	float inventory_alpha_target;
 
 } World;
 World* world = 0;
@@ -179,14 +189,26 @@ Entity* entity_create(){
 	return entity_found;
 }
 
+string get_archetype_pretty_name(ArchetypeID arch){
+	switch (arch)
+	{
+	case ARCH_item_rock: return STR("Rock"); break;
+	case ARCH_item_wood: return STR("Wood"); break;
+	default: return STR("Item not found"); break;
+	}
+}
+
 void entity_destroy(Entity* entity){
 	memset(entity, 0, sizeof(Entity));
 }
 
 void setup_tree(Entity* en){
 	en->arch = ARCH_tree;
-	en->sprite_id = SPRITE_tree0;
-	// en->sprite_id = SPRITE_tree1;
+	if (get_random_float32_in_range(0, 1) < 0.5) {
+		en->sprite_id = SPRITE_tree0;
+	} else {
+		en->sprite_id = SPRITE_tree1;
+	}
 	en->health = tree_health;
 	en->is_destructible = true;
 	en->is_selectable = true;
@@ -459,7 +481,8 @@ int entry(int argc, char **argv) {
 			}
 		}
 		
-		// :inventory UI
+		// :UI rendering
+		
 		{
 			/*
 			// TODO - cool inventory hovering above player and following
@@ -477,68 +500,127 @@ int entry(int argc, char **argv) {
 				}
 			}
 			*/
-			int item_count = 0;
-			for(int i = 0; i < ARCH_MAX; i++){
-				ItemData* item = &world->inventory_items[i];
-				if(item->amount > 0){
-					item_count++;
-				}
-			}
 			float width = 240.0;
 			float height = 135.0;
 
 			draw_frame.camera_xform = m4_scalar(1.0);
 			draw_frame.projection = m4_make_orthographic_projection(0.0, width, 0.0, height, -1, 10);
 
-			float y_pos = 70.0;
-			
-			const float icon_width = 8.0;
-			float icon_object = icon_width;
-
-			const int icon_count = 8;
-			float hotbar_width = icon_object * icon_count;
-
-			float x_start_pos = ((width - hotbar_width) / 2.0) + (icon_object * 0.5);
-
-			// bg box
-			{
-				Matrix4 xform = m4_identity();
-				xform = m4_translate(xform, v3(x_start_pos, y_pos, 0));
-				draw_rect_xform(xform, v2(hotbar_width, icon_width), v4(0, 0, 0, 0.5));
+			// :inventory UI
+			if(is_key_just_pressed(KEY_TAB)){
+				consume_key_just_pressed(KEY_TAB);
+				world->ux_state = (world->ux_state == UX_inventory ? UX_nil : UX_inventory);
 			}
-			
-			float slot_index = 0;
-			for(int i = 0; i < ARCH_MAX; i++){
-				ItemData* item = &world->inventory_items[i];
-				if(item->amount > 0){
-					float is_selected_alpha = 0.0;
-					float slot_index_offset = slot_index * icon_object;
+			world->inventory_alpha_target = (world->ux_state == UX_inventory ? 1.0 : 0.0);
+			animate_f32_to_target(&world->inventory_alpha, world->inventory_alpha_target, delta_t, 15.0);
+			bool is_inventory_enabled = world->inventory_alpha_target == 1.0;
+			if (world->inventory_alpha != 0.0)
+			{
 
+				float y_pos = 70.0;
+				
+				int item_count = 0;
+				for(int i = 0; i < ARCH_MAX; i++){
+					ItemData* item = &world->inventory_items[i];
+					if(item->amount > 0){
+						item_count++;
+					}
+				}
+
+				const float icon_width = 8.0;
+				float icon_object = icon_width;
+
+				const int icon_count = 8;
+				float hotbar_width = icon_object * icon_count;
+
+				float x_start_pos = ((width - hotbar_width) / 2.0) + (icon_object * 0.5);
+
+				// bg box
+				{
 					Matrix4 xform = m4_identity();
-					xform = m4_translate(xform, v3(x_start_pos + slot_index_offset, y_pos, 0.0));
+					xform = m4_translate(xform, v3(x_start_pos, y_pos, 0));
+					draw_rect_xform(xform, v2(hotbar_width, icon_width), bg_box_col);
+				}
+				float slot_index = 0;
+				for(int i = 0; i < ARCH_MAX; i++){
+					ItemData* item = &world->inventory_items[i];
+					if(item->amount > 0){
+						float is_selected_alpha = 0.0;
+						float slot_index_offset = slot_index * icon_object;
 
-					Sprite* sprite = get_sprite(get_sprite_id_from_arch(i));
-					
-					Draw_Quad* quad = draw_rect_xform(xform, v2(8, 8), v4(1, 1, 1, 0.2));
-					Range2f icon_box = quad_to_range(*quad);
-					if (range2f_contains(icon_box, get_mouse_pos_in_ndc())) {
-						is_selected_alpha = 1.0;
+						Matrix4 xform = m4_identity();
+						xform = m4_translate(xform, v3(x_start_pos + slot_index_offset, y_pos, 0.0));
+
+						Sprite* sprite = get_sprite(get_sprite_id_from_arch(i));
+						
+						Draw_Quad* quad = draw_rect_xform(xform, v2(8, 8), v4(1, 1, 1, 0.2));
+						Range2f icon_box = quad_to_range(*quad);
+						if (is_inventory_enabled && range2f_contains(icon_box, get_mouse_pos_in_ndc())) {
+							is_selected_alpha = 1.0;
+						}
+
+						Matrix4 box_bottom_right_xform = xform;
+						xform = m4_translate(xform, v3(icon_width * 0.5, icon_width * 0.5, 0.0));
+						
+						// TODO - selection polish
+						if(is_selected_alpha == 1.0)
+						{
+							float scale_adjust = 0.3; //0.1 * sin_breathe(os_get_elapsed_seconds(), 20.0);
+							xform = m4_scale(xform, v3(1 + scale_adjust, 1 + scale_adjust, 1));
+						}
+						xform = m4_translate(xform, v3(get_sprite_size(sprite).x * -0.5, get_sprite_size(sprite).y * -0.5, 0.0));
+						draw_image_xform(sprite->image, xform, get_sprite_size(sprite), COLOR_WHITE);
+						// tooltip
+						if(is_selected_alpha == 1.0)
+						{
+							Draw_Quad screen_quad = ndc_quad_to_screen_quad(*quad);
+							Range2f screen_range = quad_to_range(screen_quad);
+							Vector2 icon_center = range2f_get_center(screen_range);
+
+							Matrix4 xform = m4_identity();
+
+							Vector2 box_size = v2(40.0, 14.0);
+							
+							xform = m4_translate(xform, v3(box_size.x * -0.5, -box_size.y + (icon_width * -0.5), 0.0));
+							xform = m4_translate(xform, v3(icon_center.x, icon_center.y, 0.0));
+							draw_rect_xform(xform, box_size, bg_box_col);
+
+							float current_y_pos = icon_center.y;
+							{
+								string title = get_archetype_pretty_name(i);
+								Gfx_Text_Metrics metrics = measure_text(font, title, font_height, v2(0.1, 0.1));
+								Vector2 draw_pos = icon_center;
+								draw_pos = v2_sub(draw_pos, metrics.visual_pos_min);
+								draw_pos = v2_add(draw_pos, v2_mul(metrics.visual_size, v2(-0.5, -1.0))); // top center
+
+								draw_pos = v2_add(draw_pos, v2(0, icon_width * -0.5));
+								draw_pos = v2_add(draw_pos, v2(0, -2.0)); // padding
+
+								draw_text(font, title, font_height, draw_pos, v2(0.1, 0.1), COLOR_WHITE);
+
+								current_y_pos = draw_pos.y;
+							}
+
+							{
+								string text = STR("x%i");
+								text = sprint(get_temporary_allocator(), text, item->amount);
+
+								Gfx_Text_Metrics metrics = measure_text(font, text, font_height, v2(0.1, 0.1));
+								Vector2 draw_pos = v2(icon_center.x, current_y_pos);
+								draw_pos = v2_sub(draw_pos, metrics.visual_pos_min);
+								draw_pos = v2_add(draw_pos, v2_mul(metrics.visual_size, v2(-0.5, -1.0))); // top center
+
+								draw_pos = v2_add(draw_pos, v2(0, -2.0)); // padding
+
+								draw_text(font, text, font_height, draw_pos, v2(0.1, 0.1), COLOR_WHITE);
+							}
+						}
+
+						slot_index++;
 					}
-
-					Matrix4 box_bottom_right_xform = xform;
-					xform = m4_translate(xform, v3(icon_width * 0.5, icon_width * 0.5, 0.0));
-					// TODO - selection polish
-					if(is_selected_alpha == 1.0)
-					{
-						float scale_adjust = 0.1 * sin_breathe(os_get_elapsed_seconds(), 20.0);
-						xform = m4_scale(xform, v3(1 + scale_adjust, 1 + scale_adjust, 1));
-					}
-					xform = m4_translate(xform, v3(get_sprite_size(sprite).x * -0.5, get_sprite_size(sprite).y * -0.5, 0.0));
-					draw_image_xform(sprite->image, xform, get_sprite_size(sprite), COLOR_WHITE);
-
-					slot_index++;
 				}
 			}
+
 			
 		}
 
