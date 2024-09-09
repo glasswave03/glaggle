@@ -67,7 +67,7 @@ inline float v2_dist(Vector2 a, Vector2 b){
 	return v2_length(v2_sub(a, b));
 }
 
-float sin_breathe(int time, float rate){
+float sin_breathe(float time, float rate){
 	return sin((time * rate + 1) * 2);
 }
 
