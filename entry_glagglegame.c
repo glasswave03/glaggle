@@ -116,6 +116,8 @@ typedef enum SpriteID{
 	SPRITE_player,
 	SPRITE_item_rock,
 	SPRITE_item_wood,
+	SPRITE_furnace,
+
 	SPRITE_MAX,
 } SpriteID;
 Sprite sprites[SPRITE_MAX];
@@ -133,7 +135,9 @@ typedef enum ArchetypeID{
 	ARCH_item_rock = 4,
 	ARCH_item_wood = 5,
 
-	ARCH_MAX
+	ARCH_furnace = 6,
+
+	ARCH_MAX,
 }ArchetypeID;
 
 typedef struct Entity {
@@ -145,17 +149,20 @@ typedef struct Entity {
 	bool is_destructible;
 	bool is_item;
 	bool is_selectable;
+	bool is_building;
+
 	int health;
 } Entity;
 
 typedef struct ItemData {
 	int amount;
-	ArchetypeID type;
 } ItemData;
 
 typedef enum UXState {
 	UX_nil,
 	UX_inventory,
+	UX_building,
+
 } UXState;
 
 // :world
@@ -202,6 +209,14 @@ void entity_destroy(Entity* entity){
 	memset(entity, 0, sizeof(Entity));
 }
 
+// :setup
+void setup_furnace(Entity* en){
+	en->arch = ARCH_furnace;
+	en->sprite_id = SPRITE_furnace;
+	en->is_selectable = false;
+	en->is_building = true;
+}
+
 void setup_tree(Entity* en){
 	en->arch = ARCH_tree;
 	if (get_random_float32_in_range(0, 1) < 0.5) {
@@ -241,7 +256,11 @@ void setup_item_wood(Entity* en){
 
 Sprite* get_sprite(SpriteID id){
 	if(id >= 0 && id < SPRITE_MAX){
-		return &sprites[id];
+		Sprite* sprite = &sprites[id];
+		if(sprite->image){
+			return sprite;
+		}
+		return &sprites[0];
 	}
 	return &sprites[0];
 }
@@ -313,10 +332,28 @@ int entry(int argc, char **argv) {
 	sprites[SPRITE_rock0] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/rock0.png"), get_heap_allocator()) };
 	sprites[SPRITE_item_rock] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/item_rock.png"), get_heap_allocator()) };
 	sprites[SPRITE_item_wood] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/item_wood.png"), get_heap_allocator()) };
+	sprites[SPRITE_furnace] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/furnace.png"), get_heap_allocator()) };
+
+	// @ship debug this off
+	{
+		for (SpriteID i = 0; i < SPRITE_MAX; i++) {
+			Sprite* sprite = &sprites[i];
+			assert(sprite->image, "sprite image failed to load");
+		}
+		
+	}
 
 	Gfx_Font *font = load_font_from_disk(STR("C:/windows/fonts/arial.ttf"), get_heap_allocator());
 	assert(font, "Failed loading arial.ttf, %d", GetLastError());
 	const u32 font_height = 48;
+
+	// @ship debug this off
+	{
+		world->inventory_items[ARCH_item_rock].amount = 5;
+		world->inventory_items[ARCH_item_wood].amount = 5;
+		Entity* furnace = entity_create();
+		setup_furnace(furnace);
+	}
 
 	// :init
 	Entity* player_en = entity_create();
@@ -620,8 +657,27 @@ int entry(int argc, char **argv) {
 					}
 				}
 			}
-
 			
+			// :building UI
+			{
+				float x_pos = (width / 2.0) - 40;
+				float y_pos = 40;
+				Vector2 box_size = v2(80.0, 8.0);
+				float icon_width = 8.0;
+				float icon_object = icon_width;
+
+				// bg box
+				{ 
+					Matrix4 xform = m4_identity();
+					xform = m4_translate(xform, v3(x_pos, y_pos, 0));
+					draw_rect_xform(xform, box_size, bg_box_col);
+				}
+
+				// icons
+				{
+					
+				}
+			}
 		}
 
 		if(is_key_just_pressed(KEY_ESCAPE)){
