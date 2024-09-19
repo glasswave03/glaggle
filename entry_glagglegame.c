@@ -117,6 +117,7 @@ typedef enum SpriteID{
 	SPRITE_item_rock,
 	SPRITE_item_wood,
 	SPRITE_furnace,
+	SPRITE_workbench,
 
 	SPRITE_MAX,
 } SpriteID;
@@ -136,10 +137,11 @@ typedef enum ArchetypeID{
 	ARCH_item_wood = 5,
 
 	ARCH_furnace = 6,
+	ARCH_workbench = 7,
 
 	ARCH_MAX,
 }ArchetypeID;
-
+// :entity
 typedef struct Entity {
 	bool is_valid;
 	ArchetypeID arch;
@@ -158,6 +160,27 @@ typedef struct ItemData {
 	int amount;
 } ItemData;
 
+// :building resource
+typedef enum BuildingID{
+	BUILDING_nil,
+	BUILDING_furnace,
+	BUILDING_workbench,
+	BUILDING_MAX,
+} BuildingID;
+
+typedef struct BuildingData{
+	ArchetypeID to_build;
+	SpriteID icon;
+
+	// ...
+} BuildingData;
+
+BuildingData buildings[BUILDING_MAX];
+BuildingData get_building_data(BuildingID id) {
+	// note, this isn't a pointer, because this is constant resource data, we don't want to modify
+	return buildings[id];
+}
+
 typedef enum UXState {
 	UX_nil,
 	UX_inventory,
@@ -170,10 +193,12 @@ typedef enum UXState {
 typedef struct World {
 	Entity entities[MAX_ENTITY_COUNT];
 	ItemData inventory_items[ARCH_MAX];
+	BuildingData buildings[BUILDING_MAX];
 	UXState ux_state;
 	float inventory_alpha;
 	float inventory_alpha_target;
-
+	float building_alpha;
+	float building_alpha_target;
 } World;
 World* world = 0;
 
@@ -181,6 +206,7 @@ typedef struct WorldFrame{
 	Entity* selected_entity;
 }WorldFrame;
 WorldFrame world_frame;
+
 
 Entity* entity_create(){
 	Entity* entity_found = 0;
@@ -213,8 +239,15 @@ void entity_destroy(Entity* entity){
 void setup_furnace(Entity* en){
 	en->arch = ARCH_furnace;
 	en->sprite_id = SPRITE_furnace;
-	en->is_selectable = false;
 	en->is_building = true;
+	en->is_selectable = false;
+}
+
+void setup_workbench(Entity* en){
+	en->arch = ARCH_workbench;
+	en->sprite_id = SPRITE_workbench;
+	en->is_building = true;
+	en->is_selectable = false;
 }
 
 void setup_tree(Entity* en){
@@ -333,6 +366,13 @@ int entry(int argc, char **argv) {
 	sprites[SPRITE_item_rock] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/item_rock.png"), get_heap_allocator()) };
 	sprites[SPRITE_item_wood] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/item_wood.png"), get_heap_allocator()) };
 	sprites[SPRITE_furnace] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/furnace.png"), get_heap_allocator()) };
+	sprites[SPRITE_workbench] = (Sprite){ .image=load_image_from_disk(STR("res/sprites/workbench.png"), get_heap_allocator()) };
+
+	{
+		// buildings[0] = 
+		buildings[BUILDING_furnace] = (BuildingData){ .to_build=ARCH_furnace, .icon=SPRITE_furnace };
+		buildings[BUILDING_workbench] = (BuildingData){ .to_build=ARCH_workbench, .icon=SPRITE_workbench };
+	}
 
 	// @ship debug this off
 	{
@@ -660,26 +700,35 @@ int entry(int argc, char **argv) {
 			
 			// :building UI
 			{
-				float x_pos = (width / 2.0) - 40;
-				float y_pos = 40;
-				Vector2 box_size = v2(80.0, 8.0);
-				float icon_width = 8.0;
-				float icon_object = icon_width;
-
-				// bg box
-				{ 
-					Matrix4 xform = m4_identity();
-					xform = m4_translate(xform, v3(x_pos, y_pos, 0));
-					draw_rect_xform(xform, box_size, bg_box_col);
+				if(is_key_just_pressed('B')){
+					consume_key_just_pressed('B');
+					world->ux_state = (world->ux_state == UX_building ? UX_nil : UX_building);
 				}
+				world->building_alpha_target = (world->ux_state == UX_building ? 1.0 : 0.0);
+				animate_f32_to_target(&world->building_alpha, world->building_alpha_target, delta_t, 15.0);
+				bool is_building_enabled = world->building_alpha_target == 1.0;
+				if (world->building_alpha != 0.0){
+					int building_count = BUILDING_MAX - 1;
+					float icon_width = 8.0;
+					float padding = 2.0;
+					float icon_size = icon_width + padding;
+					float hotbar_size = icon_size * building_count;
+					float x_start_pos = (width - hotbar_size) * 0.5;
 
-				// icons
-				{
 					
+
+					for(BuildingID i = 1; i < BUILDING_MAX; i++){
+						BuildingData* building = &buildings[i];
+						Matrix4 xform = m4_identity();
+						xform = m4_translate(xform, v3(x_start_pos, 10.0, 0.0));
+						draw_rect_xform(xform, v2(icon_width, icon_width), bg_box_col);
+						x_start_pos += icon_size;
+					}
 				}
 			}
 		}
-
+		
+		// @ship debug change this
 		if(is_key_just_pressed(KEY_ESCAPE)){
 			window.should_close = true;
 		}
