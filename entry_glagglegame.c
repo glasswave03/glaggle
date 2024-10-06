@@ -185,6 +185,7 @@ typedef enum UXState {
 	UX_nil,
 	UX_inventory,
 	UX_building,
+	UX_placemode,
 
 } UXState;
 
@@ -241,6 +242,7 @@ void setup_furnace(Entity* en){
 	en->sprite_id = SPRITE_furnace;
 	en->is_building = true;
 	en->is_selectable = false;
+	en->is_destructible = false;
 }
 
 void setup_workbench(Entity* en){
@@ -248,6 +250,7 @@ void setup_workbench(Entity* en){
 	en->sprite_id = SPRITE_workbench;
 	en->is_building = true;
 	en->is_selectable = false;
+	en->is_destructible = false;
 }
 
 void setup_tree(Entity* en){
@@ -393,6 +396,9 @@ int entry(int argc, char **argv) {
 		world->inventory_items[ARCH_item_wood].amount = 5;
 		Entity* furnace = entity_create();
 		setup_furnace(furnace);
+		Entity* workbench = entity_create();
+		setup_workbench(workbench);
+		workbench->pos = v2(8.0, 0.0);
 	}
 
 	// :init
@@ -591,7 +597,8 @@ int entry(int argc, char **argv) {
 			world->inventory_alpha_target = (world->ux_state == UX_inventory ? 1.0 : 0.0);
 			animate_f32_to_target(&world->inventory_alpha, world->inventory_alpha_target, delta_t, 15.0);
 			bool is_inventory_enabled = world->inventory_alpha_target == 1.0;
-			if (world->inventory_alpha != 0.0)
+			// TODO - opacity fade in/out
+			if (world->inventory_alpha_target == 1.0 /*world->inventory_alpha != 0.0*/)
 			{
 
 				float y_pos = 70.0;
@@ -707,9 +714,10 @@ int entry(int argc, char **argv) {
 				world->building_alpha_target = (world->ux_state == UX_building ? 1.0 : 0.0);
 				animate_f32_to_target(&world->building_alpha, world->building_alpha_target, delta_t, 15.0);
 				bool is_building_enabled = world->building_alpha_target == 1.0;
-				if (world->building_alpha != 0.0){
+				// TODO - opacity fade in/out
+				if (world->building_alpha_target == 1.0 /*world->building_alpha != 0.0*/){
 					int building_count = BUILDING_MAX - 1;
-					float icon_width = 8.0;
+					float icon_width = 12.0;
 					float padding = 2.0;
 					float icon_size = icon_width + padding;
 					float hotbar_size = icon_size * building_count;
@@ -720,11 +728,22 @@ int entry(int argc, char **argv) {
 					for(BuildingID i = 1; i < BUILDING_MAX; i++){
 						BuildingData* building = &buildings[i];
 						Matrix4 xform = m4_identity();
+						Sprite* icon = get_sprite(building->icon);
+
 						xform = m4_translate(xform, v3(x_start_pos, 10.0, 0.0));
 						draw_rect_xform(xform, v2(icon_width, icon_width), bg_box_col);
+
+						draw_image_xform(icon->image, xform, get_sprite_size(get_sprite(building->icon)), COLOR_WHITE);
+
 						x_start_pos += icon_size;
 					}
 				}
+			}
+
+			// :placement mode
+			if(is_key_just_pressed(MOUSE_BUTTON_LEFT)) {
+				consume_key_just_pressed(MOUSE_BUTTON_LEFT);
+				
 			}
 		}
 		
