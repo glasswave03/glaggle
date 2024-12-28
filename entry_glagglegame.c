@@ -597,8 +597,12 @@ int entry(int argc, char **argv) {
 			world->inventory_alpha_target = (world->ux_state == UX_inventory ? 1.0 : 0.0);
 			animate_f32_to_target(&world->inventory_alpha, world->inventory_alpha_target, delta_t, 15.0);
 			bool is_inventory_enabled = world->inventory_alpha_target == 1.0;
+<<<<<<< Updated upstream
 			// TODO - opacity fade in/out
 			if (world->inventory_alpha_target == 1.0 /*world->inventory_alpha != 0.0*/)
+=======
+			if (world->inventory_alpha_target != 0.0)
+>>>>>>> Stashed changes
 			{
 
 				float y_pos = 70.0;
