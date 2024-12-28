@@ -158,8 +158,8 @@ typedef struct Entity {
 
 typedef struct ItemData {
 	int amount;
-} ItemData;
 
+} ItemData;
 // :building resource
 typedef enum BuildingID{
 	BUILDING_nil,
@@ -241,7 +241,7 @@ void setup_furnace(Entity* en){
 	en->arch = ARCH_furnace;
 	en->sprite_id = SPRITE_furnace;
 	en->is_building = true;
-	en->is_selectable = false;
+	en->is_selectable = true;
 	en->is_destructible = false;
 }
 
@@ -249,7 +249,7 @@ void setup_workbench(Entity* en){
 	en->arch = ARCH_workbench;
 	en->sprite_id = SPRITE_workbench;
 	en->is_building = true;
-	en->is_selectable = false;
+	en->is_selectable = true;
 	en->is_destructible = false;
 }
 
@@ -508,7 +508,8 @@ int entry(int argc, char **argv) {
 		// :click destroy
 		{
 			Entity* selected_en = world_frame.selected_entity;
-			if(is_key_just_pressed(MOUSE_BUTTON_LEFT) && selected_en->is_destructible && selected_en){
+			
+			if(is_key_just_pressed(MOUSE_BUTTON_LEFT) && selected_en && selected_en->is_destructible){
 				consume_key_just_pressed(MOUSE_BUTTON_LEFT);
 				selected_en->health -= 1;
 				if(selected_en->health <= 0){
@@ -597,12 +598,9 @@ int entry(int argc, char **argv) {
 			world->inventory_alpha_target = (world->ux_state == UX_inventory ? 1.0 : 0.0);
 			animate_f32_to_target(&world->inventory_alpha, world->inventory_alpha_target, delta_t, 15.0);
 			bool is_inventory_enabled = world->inventory_alpha_target == 1.0;
-<<<<<<< Updated upstream
+
 			// TODO - opacity fade in/out
 			if (world->inventory_alpha_target == 1.0 /*world->inventory_alpha != 0.0*/)
-=======
-			if (world->inventory_alpha_target != 0.0)
->>>>>>> Stashed changes
 			{
 
 				float y_pos = 70.0;
@@ -691,6 +689,19 @@ int entry(int argc, char **argv) {
 
 							{
 								string text = STR("x%i");
+								ArchetypeID arch = i;
+								// TODO - different descriptions
+								/*switch (arch)
+								{
+								case ARCH_item_rock:
+									text = STR("x%i rock bottom");
+									break;
+								case ARCH_item_wood:
+									text = STR("x%i how many woodchuck would chuck wood");
+									break;
+								default:
+									break;
+								}*/
 								text = sprint(get_temporary_allocator(), text, item->amount);
 
 								Gfx_Text_Metrics metrics = measure_text(font, text, font_height, v2(0.1, 0.1));
