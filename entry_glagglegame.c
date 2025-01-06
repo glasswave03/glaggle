@@ -352,6 +352,9 @@ void entity_setup(Entity *en, ArchetypeID id)
 	case ARCH_furnace:
 		setup_furnace(en);
 		break;
+	case ARCH_workbench:
+		setup_workbench(en);
+		break;
 	// :arch
 	default:
 		log_error("missing entity_setup case entry");
@@ -638,15 +641,28 @@ void do_ui_stuff()
 		// :placement mode
 		if (world->ux_state == UX_placemode)
 		{
-			Vector2 mouse_pos_world = get_mouse_pos_in_world_space();
 			set_world_space();
 			{
+				Vector2 mouse_pos_world = get_mouse_pos_in_world_space();
 				BuildingData building = get_building_data(world->placing_building);
 				Sprite *icon = get_sprite(building.icon);
+
+				Vector2 pos = mouse_pos_world;
+				pos = round_v2_to_tile(pos);
+
 				Matrix4 xform = m4_identity();
-				xform = m4_translate(xform, v3(mouse_pos_world.x, mouse_pos_world.y, 0));
-				xform = m4_translate(xform, v3(get_sprite_size(icon).x * -0.5, 0.0, 0));
+				xform = m4_translate(xform, v3(pos.x, pos.y, 0));
+				// xform = m4_translate(xform, v3(0, tile_width * -0.5, 0));
+				xform = m4_translate(xform, v3(get_sprite_size(icon).x * -0.5, 0, 0));
 				draw_image_xform(icon->image, xform, get_sprite_size(icon), COLOR_WHITE);
+				if (is_key_just_pressed(MOUSE_BUTTON_LEFT))
+				{
+					consume_key_just_pressed(MOUSE_BUTTON_LEFT);
+					Entity *en = entity_create();
+					entity_setup(en, building.to_build);
+					en->pos = pos;
+					world->ux_state = 0;
+				}
 			}
 			set_screen_space();
 		}
@@ -765,6 +781,7 @@ int entry(int argc, char **argv)
 
 		do_ui_stuff();
 
+		if (!world_frame.hover_consumed)
 		{
 			// Vector2 pos = get_mouse_pos_in_world_space();
 			// log("%f, %f", pos.x, pos.y);
